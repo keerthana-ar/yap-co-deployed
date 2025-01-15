@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { LinearProgress, Button, Typography, Container } from '@mui/material';
 
 const App = () => {
@@ -6,44 +6,54 @@ const App = () => {
   const [calories, setCalories] = useState(0);
   const [lastSoundTime, setLastSoundTime] = useState(Date.now());
   const silenceDuration = 5000;
+  const analyserRef = useRef(null);
 
   useEffect(() => {
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioContext = new AudioContext();
+
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(stream => {
         const source = audioContext.createMediaStreamSource(stream);
         const analyser = audioContext.createAnalyser();
-        const dataArray = new Uint8Array(analyser.fftSize);
+        analyser.fftSize = 2048;
+        analyserRef.current = analyser;
         source.connect(analyser);
 
         const calculateDecibels = () => {
-          analyser.getByteTimeDomainData(dataArray);
+          const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(frequencyData);
           let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            let value = (dataArray[i] - 128) / 128;
-            sum += value * value;
+          for (let i = 0; i < frequencyData.length; i++) {
+            sum += frequencyData[i];
           }
-          const rms = Math.sqrt(sum / dataArray.length);
-          const decibelLevel = 20 * Math.log10(rms);
-          return decibelLevel > -Infinity ? decibelLevel + 100 : 0;
+          const average = sum / frequencyData.length;
+          const decibelLevel = 10 * Math.log10(average);
+          return decibelLevel > -Infinity ? decibelLevel : 0;
         };
 
         const updateLevels = () => {
           const decibelLevel = calculateDecibels();
           setDecibels(decibelLevel);
+
           if (decibelLevel > 30) {
             setCalories(prev => prev + (decibelLevel - 30) * 0.1);
             setLastSoundTime(Date.now());
           } else if (Date.now() - lastSoundTime > silenceDuration) {
-            // Do nothing if silence persists
+            setCalories(0);
           }
+
           requestAnimationFrame(updateLevels);
         };
 
         updateLevels();
       })
       .catch(err => console.error('Microphone access error:', err));
-  }, [lastSoundTime]);
+
+    return () => {
+      audioContext.close(); // Clean up on component unmount
+    };
+  }, []);
 
   const resetValues = () => {
     setDecibels(0);
@@ -69,7 +79,7 @@ const App = () => {
         onClick={resetValues}
         style={{ marginTop: 30 }}
       >
-        Reset
+        RESET
       </Button>
     </Container>
   );
