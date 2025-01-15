@@ -1,4 +1,3 @@
-// src/App.js
 import { useState, useEffect } from 'react';
 import { LinearProgress, Button, Typography, Container } from '@mui/material';
 
